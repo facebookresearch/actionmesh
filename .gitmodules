@@ -1,0 +1,3 @@
+[submodule "third_party/TripoSG"]
+	path = third_party/TripoSG
+	url = git@github.com:VAST-AI-Research/TripoSG.git

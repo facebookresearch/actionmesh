@@ -1,0 +1,18 @@
+# torch==2.4.0
+# torchvision==0.19.0
+numpy<2.0
+opencv-python
+trimesh
+einops
+Pillow
+safetensors
+huggingface_hub
+transformers
+diffusers
+hydra-core
+scikit-image
+diso
+jaxtyping
+accelerate
+fast_simplification
+typeguard

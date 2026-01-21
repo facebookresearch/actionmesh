@@ -1,0 +1,115 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+# @package _global_
+
+model:
+  # ------------------------------
+  # Image-to-3D denoiser (TripoSG)
+  # ------------------------------
+  image_to_3D_denoiser:
+    num_inference_steps: ${stage_0_steps}
+    guidance_scale: 7.5
+
+  # ------------------------------
+  # Mesh post-process
+  # ------------------------------
+  mesh_process:
+    _target_: actionmesh.preprocessing.MeshPostprocessor
+    _partial_: true
+    face_decimation: ${face_decimation}
+    floaters_threshold: ${floaters_threshold}
+
+  # ------------------------------
+  # ActionMesh temporal 3D denoiser (Stage I)
+  # ------------------------------
+  temporal_3D_denoiser:
+    _target_: actionmesh.model.temporal_denoiser.ActionMeshDenoiser
+    _partial_: true
+    # -- Nominal conditions
+    num_tokens_nominal: 2048
+    temporal_context_size: 16  # Number of frames model was trained to process
+    # -- Denoiser/Flow-Matcher
+    num_attention_heads: 16
+    width: 2048
+    in_channels: 64
+    num_layers: 21
+    cross_attention_dim: 1024
+    mlp_ratio: 4.0
+    # -- Inflation
+    inflation_start: 0
+    inflation_end: -1
+
+  # ------------------------------
+  # Image-Conditioner (Stage I)
+  # ------------------------------
+  image_encoder:
+    _target_: actionmesh.model.image_encoder.ImageEncoder
+    _partial_: true
+    pretrained_dino_feature_extractor:  "pretrained_weights/dinov2"
+    pretrained_dino_model: "pretrained_weights/dinov2"
+
+  # ------------------------------
+  # ActionMesh temporal 3D autoencoder (Stage II)
+  # ------------------------------
+  temporal_3D_vae:
+    _target_: actionmesh.model.temporal_autoencoder.ActionMeshAutoencoder
+    _partial_: true
+    # -- Nominal conditions
+    temporal_context_size: 16  # Number of frames model was trained to process
+    # -- Decoder
+    in_channels: 3
+    in_extra_channels: 3
+    out_dim: 3
+    latent_channels: 64
+    width: 1024
+    num_attention_heads: 8
+    num_layers: 16
+    # -- Point (XYZ) Embedder
+    embed_frequency: 8
+    embed_include_pi: false
+    # -- Framestep/Alpha Embedder
+    framestep_encoding_strategy: linear
+    num_freqs_ts: 128
+    # -- Output
+    prediction_mode: "direct" # direct | residual
+
+  # ------------------------------
+  # Scheduler
+  # ------------------------------
+  scheduler:
+    _target_: actionmesh.scheduler.scheduler.SchedulerFlow
+    _partial_: true
+    num_inference_steps: ${stage_1_steps}
+    num_train_timesteps: 1000
+    shift: 3.0
+    is_additive: true
+
+  # ------------------------------
+  # Classifier-free guidance
+  # ------------------------------
+  cf_guidance:
+    _target_: actionmesh.scheduler.guidance.ClassifierFreeGuidance
+    _partial_: true
+    inference_enabled: true
+    guidance_at_inference: [[0,1], [1,1]] # [Image, Latent]
+    guidance_scales: ${guidance_scales}
+
+# ------------------------------
+# Inference parameters
+# ------------------------------
+# -- Stage 0
+stage_0_steps: 100
+face_decimation: 40000
+floaters_threshold: 0.02
+# -- Stage I
+stage_1_steps: 30
+guidance_scales: [7.5]
+anchor_idx: 0
+sliding_window_denoiser: 15           # Number of latents resolved per pass
+# -- Stage II
+subsampling_level: 1
+sliding_window_autoencoder: 15

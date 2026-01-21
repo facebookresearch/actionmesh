@@ -1,0 +1,4 @@
+**/__pycache__/
+outputs/
+pretrained_weights/
+actionmesh.egg-info/

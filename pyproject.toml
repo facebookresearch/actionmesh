@@ -1,0 +1,15 @@
+[project]
+authors = [{name = "Remy Sabathier", email = "ucabrs9@ucl.ac.uk"}]
+dependencies = [
+]
+name = "actionmesh"
+version = "0.0.1"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = [".", "third_party/TripoSG"]
+include = ["actionmesh*", "triposg*"]
