@@ -4,6 +4,7 @@
 <h1>🎬 ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion</h1>
 
 <a href="https://remysabathier.github.io/actionmesh/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
+<a href='https://huggingface.co/spaces/facebook/ActionMesh'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-blue'></a>
 
 **[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/index.php)**
 
@@ -18,6 +19,7 @@
 
 
 ## 🆕 Updates
+- **2025-01-21**: Demo is live! Try it here: [🤗 facebook/ActionMesh](https://huggingface.co/spaces/facebook/ActionMesh)
 
 - **2025-01-21**: Code released!
 
