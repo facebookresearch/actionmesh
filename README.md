@@ -3,6 +3,7 @@
 
 <h1>🎬 ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion</h1>
 
+<a href="https://remysabathier.github.io/actionmesh/actionmesh_2026.pdf" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/badge/Paper-ActionMesh" alt="Paper PDF"></a>
 <a href="https://remysabathier.github.io/actionmesh/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
 <a href='https://huggingface.co/spaces/facebook/ActionMesh'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-blue'></a>
 
