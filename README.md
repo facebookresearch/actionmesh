@@ -8,7 +8,7 @@
 
 **[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/index.php)**
 
-[Remy Sabathier](https://www.linkedin.com/in/r%C3%A9my-sabathier-97b264179/), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](http://www0.cs.ucl.ac.uk/staff/n.mitra/), [Tom Monnier](https://tmonnier.com/)
+[Remy Sabathier](https://remysabathier.github.io/RemySabathier/), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](http://www0.cs.ucl.ac.uk/staff/n.mitra/), [Tom Monnier](https://tmonnier.com/)
 </div>
 
 <img src="assets/docs/teaser.jpg" alt="ActionMesh teaser" width="100%">

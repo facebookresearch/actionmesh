@@ -8,6 +8,7 @@
 
 import logging
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -163,6 +164,7 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
         source_alpha: torch.Tensor,
         target_alphas: torch.Tensor,
         query: torch.Tensor,
+        step_callback: Optional[Callable[[int, int], None]] = None,
     ) -> torch.Tensor:
         """
         Given a set of latents (from stage I) and query points (mesh vertices at normalized time source_alpha),
@@ -182,6 +184,7 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
             source_alpha (B): Source timestep in normalized time [0, 1].
             target_alphas (B, T_out): Target timesteps in normalized time [0, 1].
             query (B, V, 3|6): Query points (vertices, optionally with normals).
+            step_callback: Optional callback called at each step with (step, total_steps).
 
         Returns:
             displacement (B, T_out, V, 3): Per-vertex displacement field in [-1, 1] from source_alpha to each target_alpha timestep.
@@ -245,6 +248,9 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
             disable=not self.verbose,
             desc="Temporal 3D Decoding (Stage II)",
         ):
+            if step_callback is not None:
+                step_callback(i + 1, T_out)
+
             # Prepend alpha embedding to latent sequence
             latent_with_alpha = torch.cat([latent_proj, alpha_embedded[:, :, i]], dim=1)
 

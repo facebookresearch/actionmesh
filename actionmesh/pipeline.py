@@ -6,6 +6,7 @@
 
 import logging
 import os
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -177,6 +178,7 @@ class ActionMeshPipeline(nn.Module):
         input: ActionMeshInput,
         latent_bank: LatentBank,
         seed: int = 44,
+        step_callback: Optional[Callable[[int, int], None]] = None,
     ) -> torch.Tensor:
         """
         Denoise latents for a single AR window via flow-matching.
@@ -197,6 +199,7 @@ class ActionMeshPipeline(nn.Module):
             latent_bank: LatentBank containing previously computed 3D latents.
                 Used to condition denoising; timesteps not in bank are initialized with noise.
             seed: Random seed for noise initialization.
+            step_callback: Optional callback called at each denoising step with (step, total_steps).
 
         Returns:
             latents (B, T, N, D): Denoised 3D latents for all T timesteps in this window.
@@ -236,6 +239,7 @@ class ActionMeshPipeline(nn.Module):
             framestep=input.timesteps[None],
             device=self.device,
             disable_prog=False,
+            step_callback=step_callback,
         )
 
         return latents
@@ -247,6 +251,7 @@ class ActionMeshPipeline(nn.Module):
         source_alpha: torch.Tensor,
         target_alphas: torch.Tensor,
         anchor_mesh: trimesh.Trimesh,
+        step_callback: Optional[Callable[[int, int], None]] = None,
     ) -> list[trimesh.Trimesh]:
         """
         Decode 3D latents into mesh displacement fields for a single AR window.
@@ -269,6 +274,7 @@ class ActionMeshPipeline(nn.Module):
             source_alpha (B,): Anchor timestep in normalized time [0, 1].
             target_alphas (B, T_out): Target timesteps in normalized time [0, 1].
             anchor_mesh: Anchor mesh whose vertices will be displaced.
+            step_callback: Optional callback called at each step with (step, total_steps).
 
         Returns:
             list[trimesh.Trimesh]: Sequence of T_out deformed meshes sharing anchor topology.
@@ -287,6 +293,7 @@ class ActionMeshPipeline(nn.Module):
             source_alpha=source_alpha,
             target_alphas=target_alphas,
             query=vertex_features,
+            step_callback=step_callback,
         )
 
         # -- Apply displacement to anchor vertices
@@ -361,6 +368,7 @@ class ActionMeshPipeline(nn.Module):
         input: ActionMeshInput,
         latent_bank: LatentBank,
         seed: int = 44,
+        step_callback: Optional[Callable[[int, int, int, int], None]] = None,
     ) -> LatentBank:
         """
         Stage I: Generate synchronized 3D latents for all video frames.
@@ -380,6 +388,8 @@ class ActionMeshPipeline(nn.Module):
             latent_bank: LatentBank pre-initialized with anchor latent (from init_banks_from_anchor).
                 Updated in-place as each window is processed.
             seed: Random seed for noise initialization.
+            step_callback: Optional callback called at each denoising step with
+                (step, total_steps, window_idx, total_windows).
 
         Returns:
             latent_bank: LatentBank containing denoised 3D latents for all input timesteps.
@@ -393,15 +403,26 @@ class ActionMeshPipeline(nn.Module):
             slide=self.cfg.sliding_window_denoiser,
         )
 
+        total_windows = len(ar_windows)
         for i, window_indices in enumerate(ar_windows):
             # -- Extract input (frames + timesteps) for this AR window
             window_input = input.get(window_indices)
+
+            # -- [Optional] Create step callback with window info
+            _step_cb = None
+            if step_callback is not None:
+
+                def _step_cb(
+                    step: int, total: int, _i: int = i, _tw: int = total_windows
+                ) -> None:
+                    step_callback(step, total, _i, _tw)
 
             # -- Flow-matching denoising conditioned on latent_bank and input frames
             window_latents = self._denoise_latents(
                 input=window_input,
                 latent_bank=latent_bank,
                 seed=seed + i,
+                step_callback=_step_cb,
             )
 
             # -- Store denoised latents for conditioning in subsequent AR steps
@@ -416,6 +437,7 @@ class ActionMeshPipeline(nn.Module):
         self,
         latent_bank: LatentBank,
         mesh_bank: MeshBank,
+        step_callback: Optional[Callable[[int, int, int, int], None]] = None,
     ) -> MeshBank:
         """
         Stage II: Generate animated mesh sequence by decoding 3D latents into displacement fields.
@@ -430,6 +452,8 @@ class ActionMeshPipeline(nn.Module):
             latent_bank: LatentBank containing denoised 3D latents from generate_3d_latents.
             mesh_bank: MeshBank pre-initialized with anchor mesh (from init_banks_from_anchor).
                 Updated in-place as each window is processed.
+            step_callback: Optional callback called at each decoding step with
+                (step, total_steps, window_idx, total_windows).
 
         Returns:
             mesh_bank: MeshBank containing deformed meshes for all output timesteps.
@@ -445,7 +469,8 @@ class ActionMeshPipeline(nn.Module):
         )
 
         all_timesteps = latent_bank.get_ordered_timesteps().to(self.device)
-        for window_indices in ar_windows:
+        total_windows = len(ar_windows)
+        for window_idx, window_indices in enumerate(ar_windows):
             window_timesteps = all_timesteps[window_indices][None]
 
             # -- Retrieve denoised latents for this window from Stage I
@@ -471,6 +496,18 @@ class ActionMeshPipeline(nn.Module):
             ]
             target_alphas = scale_timestep(output_timesteps, center=True, scale=True)
 
+            # -- [Optional] Create step callback with window info
+            _step_cb = None
+            if step_callback is not None:
+
+                def _step_cb(
+                    step: int,
+                    total: int,
+                    _i: int = window_idx,
+                    _tw: int = total_windows,
+                ) -> None:
+                    step_callback(step, total, _i, _tw)
+
             # -- Decode latents into per-vertex displacement fields
             window_meshes = self._decode_displacement(
                 latents=window_latents,
@@ -478,6 +515,7 @@ class ActionMeshPipeline(nn.Module):
                 source_alpha=source_alpha,
                 target_alphas=target_alphas,
                 anchor_mesh=anchor_mesh,
+                step_callback=_step_cb,
             )
 
             # -- Store deformed meshes for this window

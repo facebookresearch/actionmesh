@@ -12,7 +12,7 @@ Provides flow matching schedulers for the denoising process.
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 import torch
@@ -236,6 +236,7 @@ class SchedulerFlow:
         disable_prog: bool = True,
         mask: Optional[torch.Tensor] = None,
         framestep: Optional[torch.Tensor] = None,
+        step_callback: Optional[Callable[[int, int], None]] = None,
     ):
         """
         Run the denoising loop.
@@ -247,6 +248,7 @@ class SchedulerFlow:
             context: Conditioning context.
             mask: Optional mask to indicate conditioning latents.
             framestep: Optional frame step information.
+            step_callback: Optional callback called at each step with (step, total_steps).
 
         Returns:
             Denoised latents.
@@ -261,6 +263,9 @@ class SchedulerFlow:
             mask=mask,
             framestep=framestep,
         )
-        for sample, t in sample_loop:
+        total_steps = self.num_inference_steps
+        for step_idx, (sample, t) in enumerate(sample_loop):
             latents = sample
+            if step_callback is not None:
+                step_callback(step_idx + 1, total_steps)
         return latents
