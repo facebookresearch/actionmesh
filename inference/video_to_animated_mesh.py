@@ -101,6 +101,7 @@ def run_actionmesh(
             vertices_npy=vertices_path,
             faces_npy=faces_path,
             output_glb=animated_glb_path,
+            fps=8,
         )
 
     # -- [Optional] Render output (automatically if pytorch3d is installed)

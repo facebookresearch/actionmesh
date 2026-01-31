@@ -7,6 +7,7 @@
 <a href="https://arxiv.org/abs/2601.16148"><img src="https://img.shields.io/badge/arXiv-2601.16148-b31b1b" alt="arXiv"></a>
 <a href="https://remysabathier.github.io/actionmesh/"><img src="https://img.shields.io/badge/Project_Page-green" alt="Project Page"></a>
 <a href='https://huggingface.co/spaces/facebook/ActionMesh'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-blue'></a>
+<a href="https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
 
 **[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/index.php)**
 
@@ -21,6 +22,8 @@
 
 
 ## 🆕 Updates
+- **2026-01-31**: 🆕 Low RAM mode (`--low_ram`) — ActionMesh can now runs on Google Colab T4 GPUs! [Try it on Colab](https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb)
+
 - **2025-01-21**: Demo is live! Try it here: [🤗 facebook/ActionMesh](https://huggingface.co/spaces/facebook/ActionMesh)
 
 - **2025-01-21**: Code released!
@@ -31,7 +34,8 @@
 
 ### Requirements
 
-- **GPU**: NVIDIA GPU with at least 32GB VRAM (tested on A100, H100, and H200)
+- **GPU**: NVIDIA GPU with 32GB VRAM (tested on A100, H100, and H200)
+- **GPU (Low RAM)**: 🆕 Supports GPUs with 12GB VRAM using `--low_ram` mode (e.g., Google Colab T4)
 - **PyTorch**: Requires PyTorch and torchvision (developed with torch 2.4.0 / CUDA 12.1 and torchvision 0.19.0)
 
 ### 1. Clone and Install Dependencies
@@ -57,19 +61,34 @@ pip install -e .
 ### Basic Usage
 
 Generate an animated mesh from an input video:
+> Note: To export a single animated mesh file (importable in Blender), specify the path to your Blender executable via --blender_path.
 
-```bash
-python inference/video_to_animated_mesh.py --input assets/examples/davis_camel
-```
 
-### Fast Mode
-
-For faster inference (as used in the [HuggingFace demo](https://huggingface.co/spaces/facebook/ActionMesh)), use the `--fast` flag:
 
 ```bash
 python inference/video_to_animated_mesh.py \
     --input assets/examples/davis_camel \
-    --fast
+    --blender_path "path/to/blender/executable"  # optional: export animated mesh for Blender
+```
+
+### Fast & Low RAM Modes
+
+For faster inference (as used in the [HuggingFace demo](https://huggingface.co/spaces/facebook/ActionMesh)):
+
+```bash
+python inference/video_to_animated_mesh.py \
+    --input assets/examples/davis_camel \
+    --fast \
+    --blender_path "path/to/blender/executable"
+```
+
+For low RAM GPUs (e.g., Google Colab T4):
+
+```bash
+python inference/video_to_animated_mesh.py \
+    --input assets/examples/davis_camel \
+    --fast --low_ram \
+    --blender_path "path/to/blender/executable"
 ```
 
 **Performance comparison on H100 GPU:**
@@ -78,16 +97,6 @@ python inference/video_to_animated_mesh.py \
 |------|------|---------|
 | Default | ~115s | Higher quality |
 | Fast (`--fast`) | ~45s | Slightly reduced quality |
-
-### Exporting Animated Mesh
-
-To export a single animated mesh file (importable in Blender), specify the path to your Blender executable:
-
-```bash
-python inference/video_to_animated_mesh.py \
-    --input assets/examples/davis_camel \
-    --blender_path "path/to/blender/executable"
-```
 
 ### Model Downloads
 
@@ -168,3 +177,13 @@ ActionMesh builds upon the following open-source projects. We thank the authors 
 | [Diffusers](https://github.com/huggingface/diffusers) | Diffusion model framework |
 | [Transformers](https://github.com/huggingface/transformers) | Transformer model library |
 | [RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4) | Background removal model |
+
+## 📚 Citation
+
+```
+@inproceedings{ActionMesh2025,
+author = {Remy Sabathier, David Novotny, Niloy Mitra, Tom Monnier},
+title = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
+year = {2025},
+}
+```
