@@ -4,6 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
+import warnings
 from typing import Optional
 
 import torch
@@ -15,6 +16,13 @@ from actionmesh.model.utils.tensor_ops import (
 )
 from diffusers.models.attention_processor import Attention
 
+# Suppress deprecation warning for sdp_kernel (will be removed in future PyTorch)
+warnings.filterwarnings(
+    "ignore",
+    message=".*torch.backends.cuda.sdp_kernel.*",
+    category=FutureWarning,
+)
+
 
 class AttentionProcessor:
     r"""
@@ -22,7 +30,16 @@ class AttentionProcessor:
     """
 
     def __init__(self):
-        pass
+        self._flash_available = torch.backends.cuda.flash_sdp_enabled()
+        self._mem_efficient_available = torch.backends.cuda.mem_efficient_sdp_enabled()
+        if not (self._flash_available or self._mem_efficient_available):
+            raise RuntimeError(
+                "ActionMesh requires Flash Attention or Memory Efficient Attention, "
+                "but neither is available. Please ensure you have:\n"
+                "  1. A CUDA-capable GPU with compute capability for Flash "
+                "Attention, or for Memory Efficient Attention\n"
+                "  2. PyTorch >= 2.0 compiled with CUDA support\n"
+            )
 
     def __call__(
         self,
@@ -120,14 +137,19 @@ class AttentionProcessor:
             query = apply_rotary_embedding(query, cos_embed, sin_embed)
             key = apply_rotary_embedding(key, cos_embed, sin_embed)
 
-        # -- Scaled dot-product attention
-        hidden_states = F.scaled_dot_product_attention(
-            query,
-            key,
-            value,
-            dropout_p=0.0,
-            is_causal=False,
-        )
+        # -- Scaled dot-product attention (require efficient implementation)
+        with torch.backends.cuda.sdp_kernel(
+            enable_flash=self._flash_available,
+            enable_mem_efficient=self._mem_efficient_available,
+            enable_math=False,
+        ):
+            hidden_states = F.scaled_dot_product_attention(
+                query,
+                key,
+                value,
+                dropout_p=0.0,
+                is_causal=False,
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(
             batch_size, -1, attn.heads * head_dim

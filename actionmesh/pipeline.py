@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-import os
 from typing import Callable, Optional
 
 import torch
@@ -25,52 +24,10 @@ from actionmesh.model.utils.timesteps import chunk_from
 from actionmesh.preprocessing.background_removal import BackgroundRemover
 from actionmesh.preprocessing.image_processor import ImagePreprocessor
 from actionmesh.preprocessing.mesh_processor import get_mesh_features, MeshPostprocessor
-from huggingface_hub import snapshot_download
-from hydra import compose, initialize_config_dir
+from actionmesh.utils import download_if_missing, force_memory_cleanup, load_config
 from hydra.utils import instantiate
-from omegaconf import OmegaConf
 
 logger = logging.getLogger(__name__)
-
-
-def download_if_missing(
-    repo_id: str,
-    local_dir: str,
-) -> str:
-    """Download from HuggingFace Hub only if local directory doesn't exist.
-
-    Args:
-        repo_id: The repository ID on HuggingFace Hub.
-        local_dir: Local directory to download to.
-
-    Returns:
-        Path to the local directory.
-    """
-    if not os.path.exists(local_dir) or not os.listdir(local_dir):
-        snapshot_download(repo_id=repo_id, local_dir=local_dir)
-    return local_dir
-
-
-def load_config(config_name: str, config_dir: str, updates: dict = {}):
-    with initialize_config_dir(
-        config_dir=config_dir,
-        version_base="1.1",
-        job_name="load_config",
-    ):
-        cfg = compose(
-            config_name=config_name,
-            return_hydra_config=False,
-            overrides=[
-                "hydra.output_subdir=null",
-                "hydra.job.chdir=false",
-                "hydra/job_logging=none",
-                "hydra/hydra_logging=none",
-            ],
-        )
-        for k, v in updates.items():
-            OmegaConf.update(cfg, k, v)
-        OmegaConf.resolve(cfg)
-    return cfg
 
 
 class ActionMeshPipeline(nn.Module):
@@ -87,6 +44,8 @@ class ActionMeshPipeline(nn.Module):
         self,
         config_name: str,
         config_dir: str,
+        dtype: torch.dtype = torch.bfloat16,
+        lazy_loading: bool = True,
     ):
         """
         Initialize the ActionMesh pipeline.
@@ -94,57 +53,44 @@ class ActionMeshPipeline(nn.Module):
         Args:
             config_name: Name of the config file (e.g., "actionmesh.yaml").
             config_dir: Path to the config directory.
+            dtype: Data type for mixed precision inference (torch.float16 or torch.bfloat16).
+            lazy_loading: If True (default), models are loaded on-demand and unloaded
+                after use to minimize memory. If False, all models are loaded once
+                when to() is called and stay on GPU.
         """
         super().__init__()
         self.cfg = load_config(config_name, config_dir)
 
-        logger.info("Loading external models...")
-        # -- Download external HuggingFace checkpoints
-        triposg_weights_dir = "pretrained_weights/TripoSG"
-        download_if_missing(repo_id="VAST-AI/TripoSG", local_dir=triposg_weights_dir)
-        dinov2_weights_dir = "pretrained_weights/dinov2"
+        logger.info("Downloading external models if missing...")
+        # -- Download external HuggingFace checkpoints (store paths for lazy loading)
+        self._triposg_weights_dir = "pretrained_weights/TripoSG"
         download_if_missing(
-            repo_id="facebook/dinov2-large", local_dir=dinov2_weights_dir
+            repo_id="VAST-AI/TripoSG", local_dir=self._triposg_weights_dir
         )
-        rmbg_weights_dir = "pretrained_weights/RMBG"
-        download_if_missing(repo_id="briaai/RMBG-1.4", local_dir=rmbg_weights_dir)
-
-        # -- Load image-to-3d (TripoSG) model
-        self.image_to_3d_pipe: TripoSGPipelinePlus = (
-            TripoSGPipelinePlus.from_pretrained(triposg_weights_dir).to(torch.float16)
+        self._dinov2_weights_dir = "pretrained_weights/dinov2"
+        download_if_missing(
+            repo_id="facebook/dinov2-large", local_dir=self._dinov2_weights_dir
         )
-        self.background_removal: BackgroundRemover = BackgroundRemover(rmbg_weights_dir)
-        self.background_removal.eval()
-        logger.info("Loading external models... Done")
-
-        logger.info("Loading ActionMesh model...")
-        actionmesh_weights_dir = "pretrained_weights/ActionMesh"
+        self._rmbg_weights_dir = "pretrained_weights/RMBG"
+        download_if_missing(repo_id="briaai/RMBG-1.4", local_dir=self._rmbg_weights_dir)
+        self._actionmesh_weights_dir = "pretrained_weights/ActionMesh"
         download_if_missing(
             repo_id="facebook/ActionMesh",
-            local_dir=actionmesh_weights_dir,
+            local_dir=self._actionmesh_weights_dir,
         )
-        # -- Load temporal 3D denoiser (Stage I)
-        self.temporal_3D_denoiser: ActionMeshDenoiser = (
-            ActionMeshDenoiser.from_pretrained(
-                f"{actionmesh_weights_dir}/{DENOISER_SUBFOLDER}"
-            )
-        )
-        self.temporal_3D_denoiser.eval()
-        # -- Load image encoder for conditioning
-        self.image_encoder: ImageEncoder = instantiate(
-            self.cfg.model.image_encoder,
-            _convert_="partial",
-        )()
-        self.image_encoder.eval()
+        logger.info("Downloading external models if missing... Done")
+
+        # Initialize model references to None (lazy loading - models loaded on demand)
+        self.image_to_3d_pipe: Optional[TripoSGPipelinePlus] = None
+        self.background_removal: Optional[BackgroundRemover] = None
+        self.temporal_3D_denoiser: Optional[ActionMeshDenoiser] = None
+        self.image_encoder: Optional[ImageEncoder] = None
+        self.temporal_3D_vae: Optional[ActionMeshAutoencoder] = None
+
+        self._denoiser_latent_shape = tuple(self.cfg.denoiser_latent_shape)
+
+        # -- Load lightweight components (always loaded)
         self.image_process = ImagePreprocessor()
-        # -- Load temporal 3D autoencoder (Stage II)
-        self.temporal_3D_vae: ActionMeshAutoencoder = (
-            ActionMeshAutoencoder.from_pretrained(
-                f"{actionmesh_weights_dir}/{AUTOENCODER_SUBFOLDER}"
-            )
-        )
-        self.temporal_3D_vae.eval()
-        # -- Load mesh post-processor
         self.mesh_process: MeshPostprocessor = instantiate(
             self.cfg.model.mesh_process,
             _convert_="partial",
@@ -158,24 +104,146 @@ class ActionMeshPipeline(nn.Module):
             self.cfg.model.cf_guidance,
             _convert_="partial",
         )()
-        logger.info("Loading ActionMesh model... Done")
+
+        # Initialize target device and dtype (models stay on CPU until needed)
+        self._target_device = torch.device("cpu")
+        self._dtype = dtype
+        self._lazy_loading = lazy_loading
+
+    def _unload_model(self, model_attr: str) -> None:
+        """Completely unload a model from memory to free system RAM.
+        Args:
+            model_attr: Attribute name of the model to unload (e.g., 'image_to_3d_pipe')
+        """
+        if not self._lazy_loading:
+            return
+        model = getattr(self, model_attr, None)
+        if model is not None:
+            del model
+            setattr(self, model_attr, None)
+        force_memory_cleanup()
+        logger.debug(f"Unloaded model: {model_attr}")
+
+    def _load_image_to_3d(self) -> None:
+        """Load the image-to-3D pipeline to device. Does nothing if already loaded."""
+        if (
+            self.image_to_3d_pipe is not None
+            and self.image_to_3d_pipe.device == self.device
+        ):
+            return
+        if self.image_to_3d_pipe is None:
+            logger.info("Loading image-to-3D (TripoSG) model from disk...")
+            self.image_to_3d_pipe = TripoSGPipelinePlus.from_pretrained(
+                self._triposg_weights_dir
+            ).to(torch.float16)
+        self.image_to_3d_pipe.to(self.device)
+
+    def _load_background_removal(self) -> None:
+        """Load the background removal model to device. Does nothing if already loaded."""
+        if (
+            self.background_removal is not None
+            and self.background_removal.device == self.device
+        ):
+            return
+        if self.background_removal is None:
+            logger.info("Loading background removal model from disk...")
+            self.background_removal = BackgroundRemover(self._rmbg_weights_dir)
+            self.background_removal.eval()
+        self.background_removal.to(self.device)
+
+    def _load_image_encoder(self) -> None:
+        """Load the image encoder model to device. Does nothing if already loaded."""
+        if self.image_encoder is not None and self.image_encoder.device == self.device:
+            return
+        if self.image_encoder is None:
+            logger.info("Loading image encoder from disk...")
+            self.image_encoder = instantiate(
+                self.cfg.model.image_encoder,
+                _convert_="partial",
+            )()
+            self.image_encoder.eval()
+        self.image_encoder.to(self.device)
+
+    def _load_temporal_denoiser(self) -> None:
+        """Load the temporal 3D denoiser to device. Does nothing if already loaded."""
+        if (
+            self.temporal_3D_denoiser is not None
+            and self.temporal_3D_denoiser.device == self.device
+        ):
+            return
+        if self.temporal_3D_denoiser is None:
+            logger.info("Loading temporal 3D denoiser (Stage I) from disk...")
+            self.temporal_3D_denoiser = ActionMeshDenoiser.from_pretrained(
+                f"{self._actionmesh_weights_dir}/{DENOISER_SUBFOLDER}"
+            )
+            self.temporal_3D_denoiser.eval()
+        self.temporal_3D_denoiser.to(self.device)
+
+    def _load_temporal_vae(self) -> None:
+        """Load the temporal 3D VAE to device. Does nothing if already loaded."""
+        if (
+            self.temporal_3D_vae is not None
+            and self.temporal_3D_vae.device == self.device
+        ):
+            return
+        if self.temporal_3D_vae is None:
+            logger.info("Loading temporal 3D VAE (Stage II) from disk...")
+            self.temporal_3D_vae = ActionMeshAutoencoder.from_pretrained(
+                f"{self._actionmesh_weights_dir}/{AUTOENCODER_SUBFOLDER}"
+            )
+            self.temporal_3D_vae.eval()
+        self.temporal_3D_vae.to(self.device)
 
     @property
     def device(self) -> torch.device:
-        return self.temporal_3D_denoiser.device
+        return self._target_device
 
     def to(self, device: str) -> "ActionMeshPipeline":
-        super().to(device)
-        self.image_to_3d_pipe.to(device)
-        self.temporal_3D_denoiser.to(device)
-        self.image_encoder.to(device)
-        self.temporal_3D_vae.to(device)
-        self.background_removal.to(device)
+        """
+        Set the target device for inference.
+
+        If lazy_loading=True (default), models stay on CPU and are loaded
+        on-demand during __call__ to minimize peak memory.
+        If lazy_loading=False, all models are loaded immediately and kept on GPU.
+
+        Args:
+            device: Target device (e.g., "cuda", "cuda:0", "cpu")
+
+        Returns:
+            self for method chaining
+        """
+        self._target_device = torch.device(device)
+        if not self._lazy_loading:
+            self._load_all_models()
         return self
+
+    def _load_all_models(self) -> None:
+        """Load all models to target device (used when lazy_loading=False)."""
+        self._load_background_removal()
+        self._load_image_to_3d()
+        self._load_image_encoder()
+        self._load_temporal_denoiser()
+        self._load_temporal_vae()
+
+    def encode_all_frames(
+        self,
+        input: ActionMeshInput,
+    ) -> torch.Tensor:
+        """
+        Pre-compute context embeddings for all input frames.
+
+        Args:
+            input: ActionMeshInput containing all video frames.
+
+        Returns:
+            context (T, S, D): Context embeddings for all T frames.
+        """
+        return self.image_encoder.encode_images(input.frames)
 
     def _denoise_latents(
         self,
         input: ActionMeshInput,
+        context: torch.Tensor,
         latent_bank: LatentBank,
         seed: int = 44,
         step_callback: Optional[Callable[[int, int], None]] = None,
@@ -183,9 +251,10 @@ class ActionMeshPipeline(nn.Module):
         """
         Denoise latents for a single AR window via flow-matching.
 
-        Called by generate_3d_latents() for each autoregressive window. Starting from noise,
-        iteratively denoises to produce T synchronized 3D latents conditioned on:
-            1. Input RGBA frames (via image encoder)
+        Called by generate_3d_latents() for each autoregressive window.
+        Starting from noise, iteratively denoises to produce T synchronized
+        3D latents conditioned on:
+            1. Pre-computed context embeddings of input frames
             2. Previously computed latents from latent_bank
 
         Shape legend:
@@ -195,15 +264,14 @@ class ActionMeshPipeline(nn.Module):
             D: latent embedding dimension
 
         Args:
-            input: ActionMeshInput for this AR window (T frames with their timesteps).
+            input: ActionMeshInput for this AR window (T frames with timesteps).
+            context: Pre-computed context embeddings for this window (T, S, D).
             latent_bank: LatentBank containing previously computed 3D latents.
-                Used to condition denoising; timesteps not in bank are initialized with noise.
             seed: Random seed for noise initialization.
-            step_callback: Optional callback called at each denoising step with (step, total_steps).
+            step_callback: Optional callback at each step with (step, total_steps).
 
         Returns:
-            latents (B, T, N, D): Denoised 3D latents for all T timesteps in this window.
-                Latents already in latent_bank are returned unchanged (masked during denoising).
+            latents (B, T, N, D): Denoised 3D latents for all T timesteps.
         """
         generator = torch.Generator(device=self.device).manual_seed(seed)
 
@@ -215,7 +283,7 @@ class ActionMeshPipeline(nn.Module):
         # -- Sample initial noise for timesteps not in bank
         init_noise = self.scheduler.get_noise(
             batch_size=1,
-            latent_shape=self.temporal_3D_denoiser.latent_shape,
+            latent_shape=self._denoiser_latent_shape,
             n_timesteps=input.n_frames,
             generator=generator,
             device=self.device,
@@ -225,9 +293,6 @@ class ActionMeshPipeline(nn.Module):
         init_latent = cond_latents * cond_mask[..., None, None] + init_noise * (
             1.0 - cond_mask[..., None, None]
         )
-
-        # -- Encode input frames for cross-attention conditioning
-        context = self.image_encoder.encode_images(input.frames)
 
         # -- Iterative flow-matching denoising
         latents = self.scheduler.denoise(
@@ -352,7 +417,7 @@ class ActionMeshPipeline(nn.Module):
         # -- Initialize empty banks
         latent_bank = LatentBank(
             verbose=True,
-            empty_dims=self.temporal_3D_denoiser.latent_shape,
+            empty_dims=self._denoiser_latent_shape,
         )
         mesh_bank = MeshBank(verbose=True)
 
@@ -366,6 +431,7 @@ class ActionMeshPipeline(nn.Module):
     def generate_3d_latents(
         self,
         input: ActionMeshInput,
+        context: torch.Tensor,
         latent_bank: LatentBank,
         seed: int = 44,
         step_callback: Optional[Callable[[int, int, int, int], None]] = None,
@@ -385,6 +451,7 @@ class ActionMeshPipeline(nn.Module):
 
         Args:
             input: ActionMeshInput containing input RGBA frames and video timesteps.
+            context: Pre-computed context embeddings for all frames (T, S, D).
             latent_bank: LatentBank pre-initialized with anchor latent (from init_banks_from_anchor).
                 Updated in-place as each window is processed.
             seed: Random seed for noise initialization.
@@ -407,6 +474,8 @@ class ActionMeshPipeline(nn.Module):
         for i, window_indices in enumerate(ar_windows):
             # -- Extract input (frames + timesteps) for this AR window
             window_input = input.get(window_indices)
+            # -- Extract pre-computed context for this window
+            window_context = context[window_indices]
 
             # -- [Optional] Create step callback with window info
             _step_cb = None
@@ -417,9 +486,10 @@ class ActionMeshPipeline(nn.Module):
                 ) -> None:
                     step_callback(step, total, _i, _tw)
 
-            # -- Flow-matching denoising conditioned on latent_bank and input frames
+            # -- Flow-matching denoising conditioned on latent_bank and context
             window_latents = self._denoise_latents(
                 input=window_input,
+                context=window_context,
                 latent_bank=latent_bank,
                 seed=seed + i,
                 step_callback=_step_cb,
@@ -575,24 +645,38 @@ class ActionMeshPipeline(nn.Module):
             self.cfg.anchor_idx = anchor_idx
 
         # -- Preprocessing: remove background
+        self._load_background_removal()
         input.frames = self.background_removal.process_images(input.frames)
+        self._unload_model("background_removal")
 
         # -- Preprocessing: grouped cropping & padding
         input.frames = self.image_process.process_images(input.frames)
 
         with torch.inference_mode():
             # -- Stage 0: generate anchor 3D mesh & latent from single frame
+            self._load_image_to_3d()
             latent_bank, mesh_bank = self.init_banks_from_anchor(input, seed)
+            self._unload_model("image_to_3d_pipe")
 
-            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-                # -- Stage I: denoise synchronized 3D latents
+            # -- Pre-compute context embeddings for all frames
+            self._load_image_encoder()
+            context = self.encode_all_frames(input)
+            self._unload_model("image_encoder")
+
+            # -- Stage I: denoise synchronized 3D latents
+            self._load_temporal_denoiser()
+            with torch.autocast(device_type="cuda", dtype=self._dtype):
                 latent_bank = self.generate_3d_latents(
-                    input, latent_bank=latent_bank, seed=seed
+                    input, context=context, latent_bank=latent_bank, seed=seed
                 )
+            self._unload_model("temporal_3D_denoiser")
 
-                # -- Stage II: decode latents into mesh displacements
+            # -- Stage II: decode latents into mesh displacements
+            self._load_temporal_vae()
+            with torch.autocast(device_type="cuda", dtype=self._dtype):
                 mesh_bank = self.generate_mesh_animation(
                     latent_bank=latent_bank, mesh_bank=mesh_bank
                 )
+            self._unload_model("temporal_3D_vae")
 
         return mesh_bank.get_ordered(device="cpu")[0]

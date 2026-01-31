@@ -1,0 +1,20 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+# @package _global_
+# Low RAM preset: reduced memory usage for GPUs with limited VRAM
+
+defaults:
+  - actionmesh
+
+# ------------------------------
+# Memory optimization (low RAM)
+# ------------------------------
+model:
+  temporal_3D_denoiser:
+    clear_autocast: true
+  scheduler:
+    split_cfg_batch: true

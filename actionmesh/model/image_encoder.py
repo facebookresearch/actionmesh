@@ -31,6 +31,10 @@ class ImageEncoder(nn.Module):
             self.pretrained_dino_feature_extractor
         )
 
+    @property
+    def device(self) -> torch.device:
+        return next(self.dino_model.parameters()).device
+
     def encode_images(
         self,
         images: List[Image.Image],

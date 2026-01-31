@@ -42,11 +42,13 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
     inflation_start: int = 0  # included
     inflation_end: int = -1  # excluded
 
+    # -- Memory optimization
+    clear_autocast: bool = True  # Clear autocast cache after each block
+
     def __post_init__(self):
         super().__init__()
         self.out_channels = self.in_channels
         self.width_per_head = self.width // self.num_attention_heads
-        self.latent_shape = (self.num_tokens_nominal, self.in_channels)
 
         # -- Time embedding
         self.time_embed = Timesteps(
@@ -152,7 +154,8 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
         """
         Perform the denoising step of the flow-matching process.
 
-        ActionMesh temporal 3D denoiser (stage I) synchronously denoises hidden_states using two conditioning sources:
+        ActionMesh temporal 3D denoiser (stage I) synchronously denoises
+        hidden_states using two conditioning sources:
             * Ground-truth latents (already in hidden_states, indicated by mask)
             * Context embeddings (image conditioning, used for cross-attention)
 
@@ -169,18 +172,17 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
 
         Args:
             hidden_states (B, T, N, D): Input latents to denoise.
-            context (B, T, S, cross_attention_dim): Context embeddings for cross-attention.
+            context (B, T, S, cross_attention_dim): Context for cross-attention.
             framestep (B, T): Video timesteps for temporal positional encoding.
-            diffusion_time (B): Flow-matching diffusion timestep (0=clean, 1=noise).
+            diffusion_time (B): Flow-matching timestep (0=clean, 1=noise).
             mask (B, T): Optional mask for ground-truth latent positions.
                 Values: 1=ground-truth (diffusion_time set to 0), 0=noise.
-            freqs_rot: Optional precomputed rotary embeddings (freqs_rot_cos, freqs_rot_sin)
-                from a previous forward call. Pass this to avoid recomputing in a denoising loop.
+            freqs_rot: Optional precomputed rotary embeddings from previous call.
 
         Returns:
             tuple: (hidden_states, freqs_rot)
                 - hidden_states (B, T, N, D): Denoised latents.
-                - freqs_rot: Rotary embeddings tuple to pass to subsequent forward calls.
+                - freqs_rot: Rotary embeddings tuple for subsequent forward calls.
         """
         B, T, N, _ = hidden_states.shape
 
@@ -222,6 +224,10 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
             )
             if layer < self.num_layers // 2:
                 skips.append(hidden_states)
+
+            # Clear autocast weight cache to prevent bfloat16/float16 weight accumulation
+            if self.clear_autocast:
+                torch.clear_autocast_cache()
 
         # -- Output projection
         hidden_states = self.norm_out(hidden_states)

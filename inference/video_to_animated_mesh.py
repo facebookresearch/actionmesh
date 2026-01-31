@@ -143,6 +143,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Use fast preset (stage_0_steps=50, stage_1_steps=15).",
     )
+    parser.add_argument(
+        "--low_ram",
+        action="store_true",
+        help="Use low RAM preset (split_cfg_batch=true, clear_autocast=true).",
+    )
+    parser.add_argument(
+        "--dtype",
+        type=str,
+        choices=["bfloat16", "float16"],
+        default="bfloat16",
+        help="Data type for mixed precision inference. Default: bfloat16",
+    )
     # -- Pipeline parameters
     parser.add_argument(
         "--stage_0_steps",
@@ -183,31 +195,18 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # -- Apply fast preset if requested
-    if args.fast:
-        # Check that no pipeline parameters are set when --fast is enabled
-        fast_incompatible_params = [
-            ("--stage_0_steps", args.stage_0_steps),
-            ("--stage_1_steps", args.stage_1_steps),
-            ("--face_decimation", args.face_decimation),
-            ("--floaters_threshold", args.floaters_threshold),
-            ("--guidance_scales", args.guidance_scales),
-            ("--anchor_idx", args.anchor_idx),
-        ]
-        for param_name, param_value in fast_incompatible_params:
-            if param_value is not None:
-                raise ValueError(
-                    f"{param_name} cannot be set when --fast is enabled. "
-                    "Remove --fast to use custom parameters."
-                )
-        logger.info(
-            "Fast mode enabled: quality might be slightly reduced compared to default settings."
-        )
-        args.stage_0_steps = 50
-        args.stage_1_steps = 15
-        args.face_decimation = 40000
-        args.floaters_threshold = 0.02
-        args.guidance_scales = [7.5]
+    # -- Select config based on --fast and --low_ram flags
+    if args.fast and args.low_ram:
+        config_name = "actionmesh_fast_lowram.yaml"
+        logger.info("Fast + Low RAM mode enabled.")
+    elif args.fast:
+        config_name = "actionmesh_fast.yaml"
+        logger.info("Fast mode enabled: quality might be slightly reduced.")
+    elif args.low_ram:
+        config_name = "actionmesh_lowram.yaml"
+        logger.info("Low RAM mode enabled.")
+    else:
+        config_name = "actionmesh.yaml"
 
     # -- Set default output directory if not provided
     if args.output_dir is None:
@@ -218,12 +217,17 @@ if __name__ == "__main__":
     # -- Create output directory if it doesn't exist
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
+    # -- Parse dtype argument
+    dtype = torch.bfloat16 if args.dtype == "bfloat16" else torch.float16
+
     # -- Initialize ActionMesh pipeline
     device = "cuda"
     config_dir = Path(__file__).parent.parent / "actionmesh" / "configs"
     pipeline: ActionMeshPipeline = ActionMeshPipeline(
-        config_name="actionmesh.yaml",
+        config_name=config_name,
         config_dir=str(config_dir),
+        dtype=dtype,
+        lazy_loading=args.low_ram,
     )
     pipeline.to(device)
 

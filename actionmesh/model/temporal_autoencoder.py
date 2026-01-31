@@ -115,6 +115,10 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
         self.proj_out = nn.Linear(self.width, self.out_dim, bias=True)
         self.post_quant = nn.Linear(self.latent_channels, self.width, bias=True)
 
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
+
     def apply_displacement(
         self,
         vertex: torch.Tensor,

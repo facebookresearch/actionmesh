@@ -42,6 +42,8 @@ model:
     # -- Inflation
     inflation_start: 0
     inflation_end: -1
+    # -- Memory optimization
+    clear_autocast: false
 
   # ------------------------------
   # Image-Conditioner (Stage I)
@@ -87,6 +89,8 @@ model:
     num_train_timesteps: 1000
     shift: 3.0
     is_additive: true
+    # -- Memory optimization
+    split_cfg_batch: false
 
   # ------------------------------
   # Classifier-free guidance
@@ -101,6 +105,9 @@ model:
 # ------------------------------
 # Inference parameters
 # ------------------------------
+denoiser_latent_shape:
+  - ${model.temporal_3D_denoiser.num_tokens_nominal}
+  - ${model.temporal_3D_denoiser.in_channels}
 # -- Stage 0
 stage_0_steps: 100
 face_decimation: 40000

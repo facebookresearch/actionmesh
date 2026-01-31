@@ -1,0 +1,19 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+# @package _global_
+# Fast preset: reduced quality for faster inference
+
+defaults:
+  - actionmesh
+
+# ------------------------------
+# Inference parameters (fast)
+# ------------------------------
+# -- Stage 0
+stage_0_steps: 50
+# -- Stage I
+stage_1_steps: 15

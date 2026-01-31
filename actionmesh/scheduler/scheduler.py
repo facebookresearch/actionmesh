@@ -12,7 +12,7 @@ Provides flow matching schedulers for the denoising process.
 
 import math
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 import numpy as np
 import torch
@@ -31,12 +31,14 @@ class SchedulerFlow:
         shift: Shift value for the timestep schedule (default: 3.0).
             Higher values concentrate more steps at higher noise levels.
         is_additive: If True, use additive flow (x + dt*v), else subtractive (x - dt*v).
+        split_cfg_batch: If True, process CFG batch elements sequentially.
     """
 
     num_inference_steps: int
     num_train_timesteps: int = 1000
     shift: float = 3.0
     is_additive: bool = False
+    split_cfg_batch: bool = False
 
     def get_schedule(self) -> tuple[torch.FloatTensor, torch.FloatTensor]:
         """
@@ -134,6 +136,39 @@ class SchedulerFlow:
             math.sqrt(corr_noise) * same_noise + math.sqrt(1 - corr_noise) * indpt_noise
         )
 
+    def _diffusion_forward(
+        self,
+        diffusion_model: torch.nn.Module,
+        hidden_states: torch.Tensor,
+        context: torch.FloatTensor,
+        framestep: torch.Tensor,
+        mask: Optional[torch.Tensor],
+        diffusion_time: torch.Tensor,
+        freqs_rot: Optional[torch.Tensor],
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Run diffusion model forward, optionally splitting the CFG batch for lower memory."""
+        if not self.split_cfg_batch or hidden_states.shape[0] == 1:
+            return diffusion_model.forward(
+                hidden_states=hidden_states,
+                context=context,
+                framestep=framestep,
+                mask=mask,
+                diffusion_time=diffusion_time,
+                freqs_rot=freqs_rot,
+            )
+        outputs = []
+        for b in range(hidden_states.shape[0]):
+            output_b, freqs_rot = diffusion_model.forward(
+                hidden_states=hidden_states[b : b + 1],
+                context=context[b : b + 1],
+                framestep=framestep[b : b + 1],
+                mask=mask[b : b + 1] if mask is not None else None,
+                diffusion_time=diffusion_time[b : b + 1],
+                freqs_rot=freqs_rot,
+            )
+            outputs.append(output_b)
+        return torch.cat(outputs, dim=0), freqs_rot
+
     def _flow_sample(
         self,
         diffusion_model: torch.nn.Module,
@@ -161,17 +196,10 @@ class SchedulerFlow:
         Yields:
             Tuple of (latents, timestep, None) at each step.
         """
-        # Initialize latents
         latents = init_latent
-
-        # Compute schedule and move to device
         timesteps, distances = self.get_schedule()
-        timesteps = timesteps.to(device)
-        distances = distances.to(device)
-
-        # Get the unobserved mask (None if not in CAT3D setting)
+        timesteps, distances = timesteps.to(device), distances.to(device)
         unobserved = cf_guidance.get_unobserved_mask(mask)
-
         # Will be populated on first forward call and reused in subsequent calls
         freqs_rot = None
 
@@ -184,13 +212,8 @@ class SchedulerFlow:
             )
         ):
             # Expand the latents if we are doing classifier free guidance
-            (hidden_states_input, context_input, mask_input, framestep_input) = (
-                cf_guidance.cfg_at_inference(
-                    latent=latents,
-                    context=context,
-                    mask=mask,
-                    framestep=framestep,
-                )
+            hidden_states_input, context_input, mask_input, framestep_input = (
+                cf_guidance.cfg_at_inference(latents, context, mask, framestep)
             )
 
             diffusion_time = torch.tensor(
@@ -198,7 +221,8 @@ class SchedulerFlow:
             ).expand(hidden_states_input.shape[0])
 
             # Predict the noise residual
-            output_pred, freqs_rot = diffusion_model.forward(
+            output_pred, freqs_rot = self._diffusion_forward(
+                diffusion_model=diffusion_model,
                 hidden_states=hidden_states_input,
                 context=context_input,
                 framestep=framestep_input,
@@ -236,7 +260,7 @@ class SchedulerFlow:
         disable_prog: bool = True,
         mask: Optional[torch.Tensor] = None,
         framestep: Optional[torch.Tensor] = None,
-        step_callback: Optional[Callable[[int, int], None]] = None,
+        step_callback: Optional[callable] = None,
     ):
         """
         Run the denoising loop.
