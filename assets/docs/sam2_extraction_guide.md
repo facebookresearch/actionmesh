@@ -1,5 +1,7 @@
 # SAM2 Demo: Extracting Video with White Background
 
+![SAM2](sam2.png)
+
 This guide explains how to use the [SAM2 demo](https://sam2.metademolab.com/demo) to extract a segmented video with a white background for use with ActionMesh.
 
 ## Why Use SAM2?
