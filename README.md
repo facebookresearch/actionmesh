@@ -9,9 +9,9 @@
 <a href='https://huggingface.co/spaces/facebook/ActionMesh'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo-blue'></a>
 <a href="https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb"><img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"></a>
 
-**[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/index.php)**
+**[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/)**
 
-[Remy Sabathier](https://remysabathier.github.io/RemySabathier/), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](http://www0.cs.ucl.ac.uk/staff/n.mitra/), [Tom Monnier](https://tmonnier.com/)
+[Remy Sabathier](https://remysabathier.github.io/RemySabathier/), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](https://geometry.cs.ucl.ac.uk/), [Tom Monnier](https://tmonnier.com/)
 </div>
 
 <img src="assets/docs/teaser.jpg" alt="ActionMesh teaser" width="100%">

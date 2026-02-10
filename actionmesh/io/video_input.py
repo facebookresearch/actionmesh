@@ -10,6 +10,7 @@ from pathlib import Path
 
 import cv2
 import torch
+from natsort import natsorted
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,7 @@ class ActionMeshInput:
 
 
 def load_from_image_mask_pairs(
-    directory: str | Path, max_frames: int | None = None
+    directory: str | Path, max_frames: int | None = None, stride: int = 1
 ) -> ActionMeshInput:
     """
     Load frames from a directory containing separate image and mask files.
@@ -82,6 +83,7 @@ def load_from_image_mask_pairs(
     Args:
         directory: Path to directory containing *_image.png and *_mask.png files.
         max_frames: Maximum number of frames to load. None for all frames.
+        stride: Take every nth frame (default=1, i.e., all frames).
 
     Returns:
         ActionMeshInput with loaded RGBA frames and sequential timesteps [0, 1, 2, ...].
@@ -92,6 +94,8 @@ def load_from_image_mask_pairs(
     if not image_files:
         raise ValueError(f"No *_image.png files found in '{directory}'")
 
+    # Apply stride first, then max_frames
+    image_files = image_files[::stride]
     if max_frames is not None:
         image_files = image_files[:max_frames]
 
@@ -122,7 +126,7 @@ def load_from_image_mask_pairs(
 
 
 def load_from_image_dir(
-    path_pattern: str | Path, max_frames: int | None = None
+    path_pattern: str | Path, max_frames: int | None = None, stride: int = 1
 ) -> ActionMeshInput:
     """
     Load frames from a directory matching a glob pattern.
@@ -130,16 +134,19 @@ def load_from_image_dir(
     Args:
         path_pattern: Path with glob pattern (e.g., "/path/to/frames/*.png").
         max_frames: Maximum number of frames to load. None for all frames.
+        stride: Take every nth frame (default=1, i.e., all frames).
 
     Returns:
         ActionMeshInput with loaded frames and sequential timesteps [0, 1, 2, ...].
     """
     path_pattern = Path(path_pattern)
-    image_paths = sorted(path_pattern.parent.glob(path_pattern.name))
+    image_paths = natsorted(path_pattern.parent.glob(path_pattern.name))
 
     if not image_paths:
         raise ValueError(f"No images found matching '{path_pattern}'")
 
+    # Apply stride first, then max_frames
+    image_paths = image_paths[::stride]
     if max_frames is not None:
         image_paths = image_paths[:max_frames]
 
@@ -151,7 +158,7 @@ def load_from_image_dir(
 
 
 def load_from_video(
-    video_path: str | Path, max_frames: int | None = None
+    video_path: str | Path, max_frames: int | None = None, stride: int = 1
 ) -> ActionMeshInput:
     """
     Load frames from a video file using OpenCV.
@@ -159,6 +166,7 @@ def load_from_video(
     Args:
         video_path: Path to video file (e.g., .mp4, .avi, .mov).
         max_frames: Maximum number of frames to load. None for all frames.
+        stride: Take every nth frame (default=1, i.e., all frames).
 
     Returns:
         ActionMeshInput with loaded frames and sequential timesteps [0, 1, 2, ...].
@@ -173,6 +181,7 @@ def load_from_video(
 
     try:
         frames = []
+        frame_idx = 0
         while True:
             if max_frames is not None and len(frames) >= max_frames:
                 break
@@ -181,8 +190,11 @@ def load_from_video(
             if not ret:
                 break
 
-            frame_rgba = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
-            frames.append(Image.fromarray(frame_rgba))
+            # Only keep every nth frame based on stride
+            if frame_idx % stride == 0:
+                frame_rgba = cv2.cvtColor(frame, cv2.COLOR_BGR2RGBA)
+                frames.append(Image.fromarray(frame_rgba))
+            frame_idx += 1
     finally:
         cap.release()
 
@@ -195,7 +207,9 @@ def load_from_video(
     return ActionMeshInput(frames=frames, timesteps=timesteps)
 
 
-def load_frames(path: str | Path, max_frames: int | None = None) -> ActionMeshInput:
+def load_frames(
+    path: str | Path, max_frames: int | None = None, stride: int = 1
+) -> ActionMeshInput:
     """
     Load frames from either a video file or image directory pattern.
 
@@ -207,6 +221,7 @@ def load_frames(path: str | Path, max_frames: int | None = None) -> ActionMeshIn
     Args:
         path: Path to video file, glob pattern, or directory.
         max_frames: Maximum number of frames to load. None for all frames.
+        stride: Take every nth frame (default=1, i.e., all frames).
 
     Returns:
         ActionMeshInput with loaded frames and sequential timesteps [0, 1, 2, ...].
@@ -216,24 +231,28 @@ def load_frames(path: str | Path, max_frames: int | None = None) -> ActionMeshIn
 
     # Check for glob pattern
     if "*" in path_str or "?" in path_str:
-        return load_from_image_dir(path, max_frames=max_frames)
+        return load_from_image_dir(path, max_frames=max_frames, stride=stride)
 
     # Check for video file
     if path.suffix.lower() in VIDEO_EXTENSIONS:
-        return load_from_video(path, max_frames=max_frames)
+        return load_from_video(path, max_frames=max_frames, stride=stride)
 
     # Check for directory
     if path.is_dir():
         # Check for image/mask pairs first (xxx_image.png + xxx_mask.png)
         image_mask_files = list(path.glob("*_mask.png"))
         if image_mask_files:
-            return load_from_image_mask_pairs(path, max_frames=max_frames)
+            return load_from_image_mask_pairs(
+                path, max_frames=max_frames, stride=stride
+            )
 
         # Try common image patterns
         for ext in IMAGE_EXTENSIONS:
             pattern = path / f"*{ext}"
             try:
-                return load_from_image_dir(pattern, max_frames=max_frames)
+                return load_from_image_dir(
+                    pattern, max_frames=max_frames, stride=stride
+                )
             except ValueError:
                 continue
         raise ValueError(f"No images found in directory: {path}")

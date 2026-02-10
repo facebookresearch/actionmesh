@@ -4,7 +4,6 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
 from typing import Optional
 
 import torch
@@ -15,13 +14,6 @@ from actionmesh.model.utils.tensor_ops import (
     flat_seq_to_flat_batch,
 )
 from diffusers.models.attention_processor import Attention
-
-# Suppress deprecation warning for sdp_kernel (will be removed in future PyTorch)
-warnings.filterwarnings(
-    "ignore",
-    message=".*torch.backends.cuda.sdp_kernel.*",
-    category=FutureWarning,
-)
 
 
 class AttentionProcessor:
@@ -138,18 +130,13 @@ class AttentionProcessor:
             key = apply_rotary_embedding(key, cos_embed, sin_embed)
 
         # -- Scaled dot-product attention (require efficient implementation)
-        with torch.backends.cuda.sdp_kernel(
-            enable_flash=self._flash_available,
-            enable_mem_efficient=self._mem_efficient_available,
-            enable_math=False,
-        ):
-            hidden_states = F.scaled_dot_product_attention(
-                query,
-                key,
-                value,
-                dropout_p=0.0,
-                is_causal=False,
-            )
+        hidden_states = F.scaled_dot_product_attention(
+            query,
+            key,
+            value,
+            dropout_p=0.0,
+            is_causal=False,
+        )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(
             batch_size, -1, attn.heads * head_dim

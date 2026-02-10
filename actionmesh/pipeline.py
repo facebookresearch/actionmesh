@@ -45,7 +45,7 @@ class ActionMeshPipeline(nn.Module):
         config_name: str,
         config_dir: str,
         dtype: torch.dtype = torch.bfloat16,
-        lazy_loading: bool = True,
+        lazy_loading: bool = False,
     ):
         """
         Initialize the ActionMesh pipeline.
@@ -254,7 +254,7 @@ class ActionMeshPipeline(nn.Module):
         Called by generate_3d_latents() for each autoregressive window.
         Starting from noise, iteratively denoises to produce T synchronized
         3D latents conditioned on:
-            1. Pre-computed context embeddings of input frames
+            1. Pre-computed context embeddings
             2. Previously computed latents from latent_bank
 
         Shape legend:

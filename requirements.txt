@@ -7,12 +7,14 @@ einops
 Pillow
 safetensors
 huggingface_hub
-transformers
+transformers<5
 diffusers
 hydra-core
 scikit-image
+imageio[ffmpeg]
 diso
 jaxtyping
 accelerate
 fast_simplification
 typeguard
+natsort

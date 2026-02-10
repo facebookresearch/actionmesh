@@ -4,7 +4,7 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import torch
@@ -39,11 +39,14 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
     cross_attention_dim: int = 1024
 
     # -- Inflate denoiser
-    inflation_start: int = 0  # included
-    inflation_end: int = -1  # excluded
+    inflated_layers: tuple[int, ...] = field(default_factory=lambda: tuple(range(21)))
 
     # -- Memory optimization
     clear_autocast: bool = True  # Clear autocast cache after each block
+
+    # -- Compilation
+    compile_blocks: bool = False
+    compile_mode: str = "default"
 
     def __post_init__(self):
         super().__init__()
@@ -71,13 +74,7 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
             """
             Decide if the block "i" should have inflated self-attention
             """
-            if self.inflation_start != -1:
-                if layer < self.inflation_start:
-                    return False
-            if self.inflation_end != -1:
-                if layer >= self.inflation_end:
-                    return False
-            return True
+            return layer in self.inflated_layers
 
         self.blocks = nn.ModuleList(
             [
@@ -97,6 +94,15 @@ class ActionMeshDenoiser(nn.Module, PyTorchModelHubMixin):
                 for layer in range(self.num_layers)
             ]
         )
+
+        if self.compile_blocks:
+            self.blocks = nn.ModuleList(
+                [
+                    torch.compile(block, mode=self.compile_mode)
+                    for block in self.blocks[:-1]
+                ]
+                + [self.blocks[-1]]
+            )
 
         self.norm_out = nn.LayerNorm(self.width)
         self.proj_out = nn.Linear(self.width, self.out_channels, bias=True)
