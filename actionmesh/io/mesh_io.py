@@ -14,6 +14,32 @@ import trimesh
 logger = logging.getLogger(__name__)
 
 
+def load_glb(path: str) -> trimesh.Trimesh:
+    """Load a .glb file and return a single trimesh.Trimesh.
+
+    If the file contains a scene with multiple geometries they are
+    concatenated into one mesh.
+
+    Args:
+        path: Path to the .glb file.
+
+    Returns:
+        A single trimesh.Trimesh object.
+
+    Raises:
+        ValueError: If the file contains no geometry.
+    """
+    loaded = trimesh.load(str(path), file_type="glb", force="mesh")
+    if isinstance(loaded, trimesh.Scene):
+        meshes = [
+            geo for geo in loaded.geometry.values() if isinstance(geo, trimesh.Trimesh)
+        ]
+        if not meshes:
+            raise ValueError(f"No mesh geometry found in {path}")
+        loaded = trimesh.util.concatenate(meshes)
+    return loaded
+
+
 def save_deformation(
     meshes: list[trimesh.Trimesh],
     path: str | Path,

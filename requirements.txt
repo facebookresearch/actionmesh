@@ -10,6 +10,7 @@ huggingface_hub
 transformers<5
 diffusers
 hydra-core
+scipy
 scikit-image
 imageio[ffmpeg]
 diso

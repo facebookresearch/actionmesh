@@ -609,7 +609,7 @@ class ActionMeshPipeline(nn.Module):
         anchor_idx: int | None = None,
     ) -> list[trimesh.Trimesh]:
         """
-        Generate an animated mesh sequence from input video frames.
+        Run the video → 4D pipeline.
 
         Full pipeline execution:
             1. Preprocess input RGBA frames (grouped cropping & padding)

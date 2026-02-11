@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import trimesh
+from scipy.spatial import cKDTree
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,54 @@ def scoped_seed(seed: int | None):
     finally:
         np.random.set_state(np_state)
         random.setstate(py_state)
+
+
+def merge_and_clean_mesh(
+    mesh: trimesh.Trimesh,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Merge duplicate vertices and clean up mesh topology in-place.
+
+    GLB loading creates duplicate vertices at UV seams and hard edges.
+    This function merges them and removes degenerate/duplicate faces
+    and unreferenced vertices.
+
+    It also returns a mapping from the original (pre-merge) vertex indices
+    to the merged vertex indices, so callers can expand the merged
+    vertices back to the original topology when texture / UV must be
+    preserved.
+
+    Args:
+        mesh: Trimesh object to clean (modified in-place).
+
+    Returns:
+        vertex_merge_map: int array of shape (N_original,) where
+            ``vertex_merge_map[i]`` is the index of the merged vertex
+            that original vertex *i* maps to.
+        pre_merge_faces: int array of shape (F_original, 3), the face
+            array before merging (uses original vertex indices).
+    """
+
+    pre_merge_verts = mesh.vertices.copy()
+    pre_merge_faces = mesh.faces.copy()
+
+    mesh.merge_vertices()
+    remove_degenerate_faces(mesh)
+    remove_duplicate_faces(mesh)
+    remove_unreferenced_vertices(mesh)
+
+    # For each original vertex, find its index in the merged mesh via
+    # nearest-neighbour lookup.  This is robust to floating-point
+    # tolerance differences between our code and trimesh's internal
+    # merge logic.
+    tree = cKDTree(mesh.vertices)
+    distances, vertex_merge_map = tree.query(pre_merge_verts)
+    assert np.all(distances < 1e-6), (
+        "Some pre-merge vertices have no close match in the "
+        f"merged mesh (max dist={distances.max():.2e}). "
+        "merge_vertices() may have altered positions."
+    )
+
+    return vertex_merge_map, pre_merge_faces
 
 
 def get_mesh_features(mesh: trimesh.Trimesh, with_normals: bool) -> torch.Tensor:
@@ -110,6 +159,130 @@ def decimate_mesh(
         logger.info(f"[Decimation] After: {len(decimated.faces):,} faces")
 
     return decimated
+
+
+# ---------------------------------------------------------------------------
+# Mesh normalization
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class NormalizationParams:
+    """Parameters that describe the normalization applied to a mesh."""
+
+    bbox_center: np.ndarray | None
+    scale: float
+
+
+def normalize_mesh(
+    mesh: trimesh.Trimesh,
+    center: bool = True,
+) -> tuple[trimesh.Trimesh, NormalizationParams]:
+    """Scale a mesh so that it fits inside the [-1, 1]^3 cube.
+
+    The mesh is modified **in-place** and also returned for convenience.
+
+    Args:
+        mesh: Input mesh.
+        center: Whether to translate the bounding-box center to the
+            origin.
+
+    Returns:
+        A ``(mesh, params)`` tuple.  *mesh* is the same object
+        (modified in-place) and *params* is a
+        :class:`NormalizationParams` that can be passed to
+        :func:`denormalize_mesh` to revert the transform.
+    """
+    bbox_center = None
+    if center:
+        bbox_min = mesh.vertices.min(axis=0)
+        bbox_max = mesh.vertices.max(axis=0)
+        bbox_center = (bbox_min + bbox_max) / 2.0
+        mesh.vertices -= bbox_center
+
+    extents = mesh.vertices.max(axis=0) - mesh.vertices.min(axis=0)
+    scale = extents.max()
+    if scale > 0:
+        mesh.vertices *= 2.0 / scale
+
+    params = NormalizationParams(
+        bbox_center=bbox_center,
+        scale=float(scale),
+    )
+    return mesh, params
+
+
+def denormalize_mesh(
+    mesh: trimesh.Trimesh,
+    params: NormalizationParams,
+) -> trimesh.Trimesh:
+    """Revert the normalization.
+
+    Args:
+        mesh: A mesh living in the normalized ``[-1, 1]^3`` space.
+        params: The :class:`NormalizationParams` returned by
+            :func:`normalize_mesh` on the *original* input mesh.
+
+    Returns:
+        The same mesh object, modified in-place.
+    """
+    if params.scale > 0:
+        mesh.vertices *= params.scale / 2.0
+    if params.bbox_center is not None:
+        mesh.vertices += params.bbox_center
+
+    mesh._cache.delete("face_normals")
+    mesh._cache.delete("vertex_normals")
+
+    return mesh
+
+
+# ---------------------------------------------------------------------------
+# Surface sampling
+# ---------------------------------------------------------------------------
+
+
+def sample_surface(
+    mesh: trimesh.Trimesh,
+    n_points: int,
+    seed: int = 0,
+    with_normals: bool = True,
+    device: str | None = None,
+    dtype: "torch.dtype | None" = None,
+) -> torch.Tensor:
+    """Sample *n_points* on the mesh surface and return a tensor.
+
+    Points are sampled uniformly w.r.t. surface area.
+
+    Args:
+        mesh: Input mesh (must have faces).
+        n_points: Number of points to sample.
+        seed: Random seed for reproducibility.
+        with_normals: If True, concatenate face normals to the
+            positions, yielding shape ``(1, n_points, 6)``.
+            Otherwise shape is ``(1, n_points, 3)``.
+
+    Returns:
+        Tensor of shape ``(1, n_points, 3|6)`` on the requested
+        device / dtype.
+    """
+    points, face_indices = trimesh.sample.sample_surface(
+        mesh,
+        count=n_points,
+        seed=seed,
+    )
+    surface = torch.from_numpy(np.asarray(points))
+    if with_normals:
+        normals = torch.from_numpy(
+            np.asarray(mesh.face_normals[face_indices]),
+        )
+        surface = torch.cat([surface, normals], dim=-1)
+    surface = surface.unsqueeze(0)
+    if dtype is not None:
+        surface = surface.to(dtype)
+    if device is not None:
+        surface = surface.to(device)
+    return surface
 
 
 def remove_floaters(

@@ -117,7 +117,6 @@ We provide example sequences in `assets/examples/` with expected outputs for tes
 | Example | Type | Expected Output |
 |---------|------|-----------------|
 | `davis_camel` | ![](https://img.shields.io/badge/Real-2ea44f) [![](https://img.shields.io/badge/DAVIS-blue)](https://davischallenge.org/) | <img src="assets/docs/camel_renders.gif" width="300"> |
-| `davis_flamingo` | ![](https://img.shields.io/badge/Real-2ea44f) [![](https://img.shields.io/badge/DAVIS-blue)](https://davischallenge.org/) | <img src="assets/docs/flamingo_renders.gif" width="300"> |
 | `kangaroo` | ![](https://img.shields.io/badge/Synthetic-a855f7) | <img src="assets/docs/kangaroo_renders.gif" width="300"> |
 | `spring` | ![](https://img.shields.io/badge/Synthetic-a855f7) | <img src="assets/docs/spring_renders.gif" width="300"> |
 

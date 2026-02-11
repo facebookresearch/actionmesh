@@ -6,10 +6,21 @@
 
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import trimesh
 from diffusers.image_processor import PipelineImageInput
+from triposg.inference_utils import hierarchical_extract_geometry
+from triposg.models.autoencoders import TripoSGVAEModel
 from triposg.pipelines.pipeline_triposg import TripoSGPipeline
+
+try:
+    from actionmesh.model.utils.pointcloud_sampling import sample_pc, sample_pc_grouped
+    from pytorch3d.ops.utils import masked_gather
+
+    _is_pytorch3d_available = True
+except ImportError:
+    _is_pytorch3d_available = False
 
 
 class TripoSGPipelinePlus(TripoSGPipeline):
@@ -56,7 +67,6 @@ class TripoSGPipelinePlus(TripoSGPipeline):
         captured_latents = {}
 
         def capture_latents_callback(_pipe, _step, _timestep, callback_kwargs):
-            # Store latents on every step; final step will have the denoised latents
             captured_latents["latents"] = callback_kwargs["latents"].clone()
             return callback_kwargs
 
@@ -88,3 +98,108 @@ class TripoSGPipelinePlus(TripoSGPipeline):
             mesh = output[1][0]
 
         return captured_latents["latents"], mesh
+
+
+class TripoSGVAE(TripoSGVAEModel):
+    """Extended TripoSG VAE with a convenience latent-sampling helper."""
+
+    def __init__(self, *args, **kwargs):
+        if not _is_pytorch3d_available:
+            raise ImportError(
+                "pytorch3d is required for TripoSGVAE but is not installed. "
+            )
+        super().__init__(*args, **kwargs)
+
+    def _sample_features(
+        self,
+        x: torch.Tensor,
+        num_tokens: int,
+        seed: Optional[int] = None,
+        grouped_fps_n: Optional[int] = None,
+    ):
+        """
+        Sample points from features of the input point cloud.
+
+        Args:
+            x (torch.Tensor): The input point cloud. shape: (B, N, C)
+            num_tokens (int, optional): The number of points to sample. Defaults to 2048.
+            seed (Optional[int], optional): The random seed. Defaults to None.
+        """
+        indices = np.random.default_rng(seed).choice(
+            x.shape[1],
+            num_tokens * 4,
+            replace=num_tokens * 4 > x.shape[1],
+        )
+        selected_points = x[:, indices]
+
+        if grouped_fps_n is not None:
+            _, sampled_indices = sample_pc_grouped(
+                points=selected_points[..., :3],
+                n_samples=num_tokens,
+                n_grouped_frames=grouped_fps_n,
+                sampling_type="fps",
+                fps_random=True,
+            )
+        else:
+            _, sampled_indices = sample_pc(
+                points=selected_points[..., :3],
+                n_samples=num_tokens,
+                sampling_type="fps",
+                fps_random=True,
+            )
+
+        return masked_gather(selected_points, sampled_indices)
+
+    @torch.no_grad()
+    def encode_to_latent(
+        self,
+        surface: torch.Tensor,
+    ) -> torch.Tensor:
+        """Encode a surface tensor into a latent sample.
+
+        Args:
+            surface: Tensor of shape ``[B, N, 6]``
+                (xyz + normals).
+
+        Returns:
+            Latent sample tensor from the VAE posterior.
+        """
+        surface = surface.to(
+            self.device,
+            dtype=self.dtype,
+        )
+        posterior = self.encode(surface).latent_dist
+        return posterior.sample()
+
+    @torch.no_grad()
+    def decode_latents(
+        self,
+        latents: torch.Tensor,
+        bounds: Union[Tuple[float], List[float], float] = (
+            -1.005,
+            -1.005,
+            -1.005,
+            1.005,
+            1.005,
+            1.005,
+        ),
+        dense_octree_depth: int = 8,
+        hierarchical_octree_depth: int = 9,
+    ) -> list[trimesh.Trimesh]:
+        """Decode latents into meshes."""
+
+        geometric_func = lambda x: self.decode(latents, sampled_points=x).sample
+
+        output = hierarchical_extract_geometry(
+            geometric_func,
+            self.device,
+            bounds=bounds,
+            dense_octree_depth=dense_octree_depth,
+            hierarchical_octree_depth=hierarchical_octree_depth,
+        )
+        meshes = [
+            trimesh.Trimesh(mesh_v_f[0].astype(np.float32), mesh_v_f[1])
+            for mesh_v_f in output
+        ]
+
+        return meshes
