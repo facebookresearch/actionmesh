@@ -18,11 +18,15 @@
 
 ## 📖 Overview
 
-**ActionMesh** is a **fast Video** → **Animated 3D Mesh** model that generates an animated 3D mesh (topology fixed) from input videos (real or synthetic).
+**ActionMesh** is a fast model for generating animated 3D meshes from videos. It supports two modes:
+- **Video → 4D** *(main)*: generate an animated mesh from a video
+- **{Video + 3D} → 4D**: animate an existing mesh w.r.t. the video, preserving its topology and texture
 
 
 ## 🆕 Updates
-- **2026-01-31**: 🆕 Low RAM mode (`--low_ram`) — ActionMesh can now runs on Google Colab T4 GPUs! [Try it on Colab](https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb)
+- **2026-02-11**: 🆕 {3D+video}→4D - Optionally pass a 3D mesh as input (texture preserved)
+
+- **2026-01-31**: Low RAM mode (`--low_ram`) — Runs on Google Colab T4 GPUs! [Try it on Colab](https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb)
 
 - **2025-01-21**: Demo is live! Try it here: [🤗 facebook/ActionMesh](https://huggingface.co/spaces/facebook/ActionMesh)
 
@@ -34,8 +38,7 @@
 
 ### Requirements
 
-- **GPU**: NVIDIA GPU with 32GB VRAM (tested on A100, H100, and H200)
-- **GPU (Low RAM)**: 🆕 Supports GPUs with 12GB VRAM using `--low_ram` mode (e.g., Google Colab T4)
+- **GPU**: NVIDIA GPU with 32GB VRAM, or 12GB with `--low_ram` mode (e.g., Google Colab T4)
 - **PyTorch**: Requires PyTorch and torchvision (developed with torch 2.4.0 / CUDA 12.1 and torchvision 0.19.0)
 
 ### 1. Clone and Install Dependencies
@@ -52,17 +55,16 @@ pip install -e .
 
 | Dependency | Purpose | Installation |
 |------------|---------|--------------|
-| **PyTorch3D** | Video rendering of animated meshes | [Installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md) |
+| **PyTorch3D** | Video rendering of animated meshes; required for {video+3D}→4D inference | [Installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md) |
 | **Blender 3.5.1** | Export animated mesh as a single `.glb` file | [Download](https://download.blender.org/release/Blender3.5/) |
 
 
 ## 🚀 Quick Start
 
-### Basic Usage
+### I - Video → 4D
 
 Generate an animated mesh from an input video:
 > Note: To export a single animated mesh file (importable in Blender), specify the path to your Blender executable via --blender_path.
-
 
 
 ```bash
@@ -71,25 +73,20 @@ python inference/video_to_animated_mesh.py \
     --blender_path "path/to/blender/executable"  # optional: export animated mesh for Blender
 ```
 
-### Fast & Low RAM Modes
+### II - {Video + 3D} → 4D
 
-For faster inference (as used in the [HuggingFace demo](https://huggingface.co/spaces/facebook/ActionMesh)):
+Pass an existing mesh to animate it w.r.t. the video, preserving its topology and texture:
 
 ```bash
-python inference/video_to_animated_mesh.py \
-    --input assets/examples/davis_camel \
-    --fast \
+python inference/video_and_3d_to_animated_mesh.py \
+    --input assets/examples/panda \
+    --mesh_input assets/examples/panda/panda.glb \
     --blender_path "path/to/blender/executable"
 ```
 
-For low RAM GPUs (e.g., Google Colab T4):
+**Fast & Low RAM Modes**
 
-```bash
-python inference/video_to_animated_mesh.py \
-    --input assets/examples/davis_camel \
-    --fast --low_ram \
-    --blender_path "path/to/blender/executable"
-```
+Add `--fast` for faster inference (as used in the [HuggingFace demo](https://huggingface.co/spaces/facebook/ActionMesh)), and `--low_ram` for GPUs with limited VRAM (e.g., Google Colab T4). Both flags can be combined.
 
 **Performance comparison on H100 GPU:**
 
@@ -98,7 +95,7 @@ python inference/video_to_animated_mesh.py \
 | Default | ~115s | Higher quality |
 | Fast (`--fast`) | ~45s | Slightly reduced quality |
 
-### Model Downloads
+**Model Downloads**
 
 On the first launch, ActionMesh weights and external models are automatically downloaded from HuggingFace:
 
@@ -156,6 +153,11 @@ The model exports a folder containing:
 <summary><b>🎞️ Animated mesh file imported in Blender</b></summary>
 <br>
 <img src="assets/docs/blender_export.gif" alt="Blender export example" width="480">
+
+In the **{Video + 3D} → 4D** setting, if the source 3D mesh has a texture, it is preserved in the exported `animated_mesh.glb`.
+<br><br>
+<img src="assets/docs/panda_blender.gif" alt="Texture preserved in Blender export (panda)" width="480">
+
 </details>
 
 
