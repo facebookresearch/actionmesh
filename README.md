@@ -24,7 +24,10 @@
 
 
 ## 🆕 Updates
-- **2026-02-11**: 🆕 {3D+video}→4D - Optionally pass a 3D mesh as input (texture preserved)
+
+- **2026-02-20**: 🆕 We release [🤗 facebook/actionbench](https://huggingface.co/datasets/facebook/actionbench), a benchmark dataset of 128 paired videos ↔ animated point-clouds for evaluating animated 3D mesh generation
+
+- **2026-02-11**: {3D+video}→4D - Optionally pass a 3D mesh as input (texture preserved)
 
 - **2026-01-31**: Low RAM mode (`--low_ram`) — Runs on Google Colab T4 GPUs! [Try it on Colab](https://colab.research.google.com/github/facebookresearch/ActionMesh/blob/main/notebooks/ActionMesh.ipynb)
 
@@ -55,7 +58,7 @@ pip install -e .
 
 | Dependency | Purpose | Installation |
 |------------|---------|--------------|
-| **PyTorch3D** | Video rendering of animated meshes; required for {video+3D}→4D inference | [Installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md) |
+| **PyTorch3D** | Video rendering of animated meshes; required for {video+3D}→4D inference and ActionBench evaluation (see [ActionBench README](actionbench/README.md)) | [Installation guide](https://github.com/facebookresearch/pytorch3d/blob/main/INSTALL.md) |
 | **Blender 3.5.1** | Export animated mesh as a single `.glb` file | [Download](https://download.blender.org/release/Blender3.5/) |
 
 
@@ -75,7 +78,7 @@ python inference/video_to_animated_mesh.py \
 
 ### II - {Video + 3D} → 4D
 
-Pass an existing mesh to animate it w.r.t. the video, preserving its topology and texture:
+Pass an existing mesh (.GLB) to animate it w.r.t. the video, preserving its topology and texture:
 
 ```bash
 python inference/video_and_3d_to_animated_mesh.py \
@@ -153,12 +156,12 @@ The model exports a folder containing:
 <summary><b>🎞️ Animated mesh file imported in Blender</b></summary>
 <br>
 <img src="assets/docs/blender_export.gif" alt="Blender export example" width="480">
-
-In the **{Video + 3D} → 4D** setting, if the source 3D mesh has a texture, it is preserved in the exported `animated_mesh.glb`.
-<br><br>
+<br>
+In the {Video + 3D} → 4D setting, if the input mesh has a texture, it is preserved in `animated_mesh.glb`.
+<br>
 <img src="assets/docs/panda_blender.gif" alt="Texture preserved in Blender export (panda)" width="480">
-
 </details>
+
 
 
 
