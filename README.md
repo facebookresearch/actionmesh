@@ -25,7 +25,7 @@
 
 ## 🆕 Updates
 
-- **2026-02-20**: 🆕 We release [🤗 facebook/actionbench](https://huggingface.co/datasets/facebook/actionbench), a benchmark dataset of 128 paired videos ↔ animated point-clouds for evaluating animated 3D mesh generation
+- **2026-02-20**: 📊 We release [ActionBench](https://huggingface.co/datasets/facebook/actionbench), a benchmark dataset of 128 paired videos ↔ animated point-clouds for evaluating animated 3D mesh generation. See [actionbench/README.md](actionbench/README.md) for evaluation instructions.
 
 - **2026-02-11**: {3D+video}→4D - Optionally pass a 3D mesh as input (texture preserved)
 
