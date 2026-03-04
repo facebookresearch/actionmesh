@@ -72,9 +72,6 @@ model:
     # -- Point (XYZ) Embedder
     embed_frequency: 8
     embed_include_pi: false
-    # -- Framestep/Alpha Embedder
-    framestep_encoding_strategy: linear
-    num_freqs_ts: 128
     # -- Output
     prediction_mode: "direct" # direct | residual
 

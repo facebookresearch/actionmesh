@@ -18,7 +18,11 @@ from actionmesh.model.temporal_autoencoder import (
     AUTOENCODER_SUBFOLDER,
 )
 from actionmesh.model.temporal_denoiser import ActionMeshDenoiser, DENOISER_SUBFOLDER
-from actionmesh.model.utils.embeddings import interpolate_timesteps, scale_timestep
+from actionmesh.model.utils.embeddings import (
+    apply_scaling,
+    get_scaling,
+    interpolate_timesteps,
+)
 from actionmesh.model.utils.storage import LatentBank, MeshBank
 from actionmesh.model.utils.timesteps import chunk_from
 from actionmesh.preprocessing.background_removal import BackgroundRemover
@@ -561,10 +565,9 @@ class ActionMeshPipeline(nn.Module):
             )
 
             # -- Normalize timesteps to [0, 1] for displacement field prediction
-            source_alpha = scale_timestep(window_timesteps, center=True, scale=True)[
-                :, 0
-            ]
-            target_alphas = scale_timestep(output_timesteps, center=True, scale=True)
+            t_min, t_range = get_scaling(window_timesteps)
+            source_alpha = apply_scaling(window_timesteps[:, 0], t_min, t_range)
+            target_alphas = apply_scaling(output_timesteps, t_min, t_range)
 
             # -- [Optional] Create step callback with window info
             _step_cb = None

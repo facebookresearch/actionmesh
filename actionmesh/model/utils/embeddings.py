@@ -153,6 +153,49 @@ def scale_timestep(
     return timestep
 
 
+def get_scaling(
+    timesteps: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute scaling parameters (min and range) from timesteps.
+
+    Args:
+        timesteps: (B, N_TS) tensor of timesteps.
+
+    Returns:
+        Tuple of:
+            - t_min: (B,) minimum timestep per batch
+            - t_range: (B,) range (max - min) per batch
+    """
+    t_min = timesteps.min(dim=1).values
+    t_max = timesteps.max(dim=1).values
+    t_range = t_max - t_min
+    return t_min, t_range
+
+
+def apply_scaling(
+    timesteps: torch.Tensor,
+    t_min: torch.Tensor,
+    t_range: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Apply scaling to timesteps using pre-computed min and range.
+
+    Normalizes timesteps to [0, 1] using: (timesteps - t_min) / t_range
+
+    Args:
+        timesteps: (B, N_TS) or (B,) tensor of timesteps to scale.
+        t_min: (B,) minimum values from reference timesteps.
+        t_range: (B,) range values from reference timesteps.
+
+    Returns:
+        Scaled timesteps with same shape as input.
+    """
+    if timesteps.dim() == 1:
+        return (timesteps - t_min) / t_range
+    return (timesteps - t_min.unsqueeze(1)) / t_range.unsqueeze(1)
+
+
 def get_n_subdivisions(start: int, end: int, level: int = 1) -> int:
     """
     Compute number of points after recursive subdivision.

@@ -53,10 +53,6 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
     embed_frequency: int = 8
     embed_include_pi: bool = False
 
-    # -- Framestep/Alpha Embedder
-    framestep_encoding_strategy: str = "linear"
-    num_freqs_ts: int = 128
-
     # -- Output
     prediction_mode: str = "direct"  # direct | residual
 
@@ -123,6 +119,7 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
         self,
         vertex: torch.Tensor,
         displacement: torch.Tensor,
+        scale: float = 1.0,
     ) -> torch.Tensor:
         """
         Apply predicted displacement field to source vertices.
@@ -130,14 +127,16 @@ class ActionMeshAutoencoder(nn.Module, PyTorchModelHubMixin):
         Args:
             vertex (B, V, 3): Source mesh vertices (reference frame).
             displacement (B, T_out, V, 3): Predicted displacement field.
-
+            scale (float): Scale factor for displacement field.
         Returns:
             vertex_deformed (B, T_out, V, 3): Deformed vertices clamped to [-1, 1].
         """
         if self.prediction_mode == "direct":
-            return torch.clamp(displacement, min=-1.0, max=1.0)
+            return torch.clamp(displacement, min=-1.0 * scale, max=1.0 * scale)
         elif self.prediction_mode == "residual":
-            return torch.clamp(vertex[:, None] + displacement, min=-1.0, max=1.0)
+            return torch.clamp(
+                vertex[:, None] + displacement, min=-1.0 * scale, max=1.0 * scale
+            )
         else:
             raise ValueError(f"Invalid prediction_mode: {self.prediction_mode}")
 

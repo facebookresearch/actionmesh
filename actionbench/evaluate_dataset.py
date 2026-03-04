@@ -97,13 +97,16 @@ class DatasetResults:
         return summary
 
 
-def find_uids(gt_root: Path, pred_root: Path) -> list[str]:
+def find_uids(
+    gt_root: Path, pred_root: Path, mesh_pattern: str = "mesh_*.glb"
+) -> list[str]:
     """
     Find all UIDs that exist in both GT and prediction directories.
 
     Args:
         gt_root: Root directory containing GT surfaces.
         pred_root: Root directory containing predictions.
+        mesh_pattern: Glob pattern to match mesh files.
 
     Returns:
         List of UIDs found in both directories.
@@ -111,15 +114,32 @@ def find_uids(gt_root: Path, pred_root: Path) -> list[str]:
     # Find GT UIDs (directories with surfaces.npy)
     gt_uids = {p.parent.name for p in gt_root.glob("*/surfaces.npy")}
 
-    # Find pred UIDs (directories with mesh files)
-    pred_uids = {p.parent.name for p in pred_root.glob("*/*.glb")}
-    pred_uids |= {p.parent.name for p in pred_root.glob("*/*.obj")}
+    # Find pred UIDs (directories with mesh files matching pattern)
+    pred_uids = {
+        p.relative_to(pred_root).parts[0] for p in pred_root.glob(f"*/{mesh_pattern}")
+    }
 
     common_uids = gt_uids & pred_uids
 
     logger.info(
         f"Found {len(gt_uids)} GT, {len(pred_uids)} pred, " f"{len(common_uids)} common"
     )
+
+    if not gt_uids:
+        raise FileNotFoundError(
+            f"No GT samples found in {gt_root}. Expected */surfaces.npy files."
+        )
+
+    if not pred_uids:
+        raise FileNotFoundError(
+            f"No predictions found in {pred_root}. " f"Expected */{mesh_pattern} files."
+        )
+
+    if not common_uids:
+        raise ValueError(
+            f"No common UIDs between GT and predictions. "
+            f"GT UIDs: {len(gt_uids)}, Pred UIDs: {len(pred_uids)}."
+        )
 
     if gt_uids - pred_uids:
         logger.warning(f"Missing predictions: {len(gt_uids - pred_uids)}")
@@ -184,6 +204,7 @@ def evaluate_sample(
     n_pts_chamfer: int = 100_000,
     seed: int = 44,
     mesh_pattern: str = "mesh_*.glb",
+    is_4d: bool = True,
 ) -> SampleResult:
     """
     Evaluate a single sample.
@@ -234,7 +255,7 @@ def evaluate_sample(
             gt_pc=gt_pc,
             pred_meshes=pred_meshes,
             device=device,
-            is_4D=True,
+            is_4D=is_4d,
             n_pts_icp=n_pts_icp,
             n_pts_chamfer=n_pts_chamfer,
             seed=seed,
@@ -308,6 +329,7 @@ def evaluate_dataset(
     seed: int = 44,
     mesh_pattern: str = "mesh_*.glb",
     recompute: bool = False,
+    is_4d: bool = True,
 ) -> DatasetResults:
     """
     Evaluate all samples in the dataset.
@@ -333,7 +355,7 @@ def evaluate_dataset(
     pred_root = Path(pred_root)
     output_path = Path(output_csv) if output_csv else None
 
-    uids = find_uids(gt_root, pred_root)
+    uids = find_uids(gt_root, pred_root, mesh_pattern)
 
     # Load existing results for resumption
     existing_results: dict[str, SampleResult] = {}
@@ -366,6 +388,7 @@ def evaluate_dataset(
             n_pts_chamfer=n_pts_chamfer,
             seed=seed,
             mesh_pattern=mesh_pattern,
+            is_4d=is_4d,
         )
         results.add(result)
 
@@ -476,6 +499,12 @@ def main():
         action="store_true",
         help="Recompute all samples even if already done",
     )
+    parser.add_argument(
+        "--3d-only",
+        action="store_true",
+        dest="three_d_only",
+        help="Compute 3D metrics only (skip 4D/motion metrics)",
+    )
 
     args = parser.parse_args()
 
@@ -489,6 +518,7 @@ def main():
         seed=args.seed,
         mesh_pattern=args.mesh_pattern,
         recompute=args.recompute,
+        is_4d=not args.three_d_only,
     )
 
     print_summary(results)
