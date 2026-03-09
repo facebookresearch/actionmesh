@@ -59,6 +59,15 @@ Metrics are described in the [ActionMesh paper](https://arxiv.org/abs/2601.16148
 - **CD-4D**: Chamfer Distance 4D — measures spatio-temporal consistency
 - **CD-M**: Motion Chamfer Distance — measures motion fidelity
 
+## 🏆 Leaderboard
+
+Average result over all 128 animated objects (seed=42).
+
+| Method | CD-3D ↓ | CD-4D ↓ | CD-M ↓ |
+|--------|---------|---------|--------|
+| ActionMesh | **0.053** | **0.081** | **0.148** |
+| ActionMesh `--fast` | 0.055 | 0.088 | 0.154 |
+
 ## 🏛️ License
 
 See the LICENSE file for details about the license under which this dataset is made available.
@@ -68,9 +77,9 @@ See the LICENSE file for details about the license under which this dataset is m
 If you use ActionBench, please cite the following paper:
 
 ```bibtex
-@inproceedings{ActionMesh2025,
+@inproceedings{ActionMesh2026,
   author = {Remy Sabathier and David Novotny and Niloy Mitra and Tom Monnier},
   title = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
-  year = {2025},
+  year = {2026},
 }
 ```
