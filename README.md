@@ -95,7 +95,7 @@ Add `--fast` for faster inference (as used in the [HuggingFace demo](https://hug
 
 | Mode | Time | Quality |
 |------|------|---------|
-| Default | ~115s | Higher quality |
+| Default | ~75s | Higher quality |
 | Fast (`--fast`) | ~45s | Slightly reduced quality |
 
 **Model Downloads**
