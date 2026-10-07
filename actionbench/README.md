@@ -84,10 +84,11 @@ See the LICENSE file for details about the license under which this dataset is m
 
 If you use ActionBench, please cite the following paper:
 
-```bibtex
-@inproceedings{ActionMesh2026,
-  author = {Remy Sabathier and David Novotny and Niloy Mitra and Tom Monnier},
-  title = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
-  year = {2026},
+```
+@inproceedings{Sabathier_2026_CVPR,
+    author    = {Sabathier, Remy and Novotny, David and Mitra, Niloy J. and Monnier, Tom},
+    title     = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    year      = {2026},
 }
 ```

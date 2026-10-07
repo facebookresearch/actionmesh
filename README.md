@@ -11,7 +11,7 @@
 
 **[Meta Reality Labs](https://ai.facebook.com/research/)**;  **[SpAItial](https://www.spaitial.ai/)**; **[University College London](https://geometry.cs.ucl.ac.uk/)**
 
-[Remy Sabathier](https://remysabathier.github.io/RemySabathier/), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](https://geometry.cs.ucl.ac.uk/), [Tom Monnier](https://tmonnier.com/)
+[Remy Sabathier](https://rsabathier.com), [David Novotny](https://d-novotny.github.io/), [Niloy J. Mitra](https://geometry.cs.ucl.ac.uk/), [Tom Monnier](https://tmonnier.com/)
 </div>
 
 <img src="assets/docs/teaser.jpg" alt="ActionMesh teaser" width="100%">
@@ -185,9 +185,10 @@ ActionMesh builds upon the following open-source projects. We thank the authors 
 ## 📚 Citation
 
 ```
-@inproceedings{ActionMesh2026,
-author = {Remy Sabathier, David Novotny, Niloy Mitra, Tom Monnier},
-title = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
-year = {2026},
+@inproceedings{Sabathier_2026_CVPR,
+    author    = {Sabathier, Remy and Novotny, David and Mitra, Niloy J. and Monnier, Tom},
+    title     = {ActionMesh: Animated 3D Mesh Generation with Temporal 3D Diffusion},
+    booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+    year      = {2026},
 }
 ```
